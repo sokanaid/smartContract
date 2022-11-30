@@ -16,6 +16,7 @@ contract RSPGame {
     enum State {
         WaitingPlayers,
         WaitingPlayersActions,
+        WaitingProves,
         Complited,
         FinishGame
     }
@@ -27,6 +28,8 @@ contract RSPGame {
         Action  player1_action;
         Action  player2_action;
         address player_winner;
+        bytes32 player1_hash;
+        bytes32 player2_hash;
     }
 
     Game private current_game;
@@ -38,7 +41,7 @@ contract RSPGame {
     }
 
     function newGame() public {
-        current_game = Game(address(0x0),address(0x0),State.WaitingPlayers, Action.None,Action.None, address(0x0));
+        current_game = Game(address(0x0),address(0x0),State.WaitingPlayers, Action.None,Action.None, address(0x0), 0x0, 0x0);
         emit ChangeState(current_game.current_state);
     }
 
@@ -74,13 +77,43 @@ contract RSPGame {
         return 0;
     }
 
-    function makeAction(Action action) public isPlayer returns (bool) {
+    function makeAction(bytes32 hash) public isPlayer returns (bool) {
         require(current_game.current_state == State.WaitingPlayersActions); 
         if (msg.sender == current_game.player1 
-                        && current_game.player1_action == Action.None) {
+                        && current_game.player1_hash == 0x0) {
+            current_game.player1_hash = hash;
+        } else if (msg.sender == current_game.player2 
+                        && current_game.player2_hash == 0x0) {
+            current_game.player2_hash = hash;
+        }
+
+        if (current_game.player1_hash != 0x0
+                        && current_game.player2_hash != 0x0) {
+            current_game.current_state = State.WaitingProves;
+            emit ChangeState(current_game.current_state);
+            getResult();
+            return true;
+        }
+        return false;
+    }
+
+    function proveAction(Action action, uint32 salt) public isPlayer returns (bool) {
+        require(current_game.current_state == State.WaitingProves); 
+
+        bytes32 hash = sha256(
+            bytes.concat(
+                bytes(Strings.toString(uint256(action))),
+                bytes(Strings.toString(salt))
+            )
+        );
+
+        if (msg.sender == current_game.player1 
+                        && current_game.player1_action == Action.None 
+                        && hash == current_game.player1_hash) {
             current_game.player1_action = action;
         } else if (msg.sender == current_game.player2 
-                        && current_game.player2_action == Action.None) {
+                        &&current_game.player2_action == Action.None 
+                        && hash == current_game.player2_hash) {
             current_game.player2_action = action;
         }
 
@@ -126,6 +159,4 @@ contract RSPGame {
             emit ChangeState(current_game.current_state);
             emit GameFinished(current_game);
         }
-    
-    
 }
